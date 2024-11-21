@@ -1,0 +1,57 @@
+rec_recognition en_ppocrv3 training method
+
+1. 准备数据
+images
+rec_gt.txt（内容为root+'\t'+label）
+
+2. 划分数据集
+train_data/crop_img/ <- images
+train_data/ <- rec_gt.txt
+运行PPOCRLabel/gen_ocr_train_val_test.py，生成rec文件，存放划分好的数据
+
+3. 训练
+修改configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml配置文件：
+（save_model_dir: ./output/v3_en_mobile  # 模型保存的路径——未修改）
+（save_epoch_step: 3 -> 100  # 设置合适的模型保存epoch）
+pretrained_model: ./pretrain_models/en_PP-OCRv3_rec_train/best_accuracy  # 填加预训练模型
+（下载预训练模型 https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_rec_train.tar）
+Train:
+    dataset:
+        data_dir: ./train_data/rec/train  # 修改训练集路径
+        label_file_list:
+        - ./train_data/rec/train.txt  # 修改训练标签文件路径
+        transforms:
+        - RecAug:
+            use_tia: True  # tia数据增强效果
+        - RandAugment:  # 图像变换数据增强效果
+    loader:
+        batch_size_per_card: 128  # 设置合适的batch size
+        num_workers: 4 -> 1  # 带不起来多线程
+Eval:
+    dataset:
+        data_dir: ./train_data/rec/val  # 修改验证集路径
+        label_file_list:
+        - ./train_data/rec/val.txt  # 修改验证标签文件路径
+    loader:
+        batch_size_per_card: 128  # 设置合适的batch size
+        num_workers: 4 -> 1  # 带不起来多线程
+
+开始训练：tools/train.py -c configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml，生成训练模型
+
+断点续训：tools/train.py -c configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml -o Global.checkpoints=./output/v3_en_mobile/latest_accuracy
+
+4. 推理
+修改configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml配置文件：
+checkpoints: ./output/v3_en_mobile/best_accuracy  # 导出修改为训练模型
+save_inference_dir: ./output/v3_en_mobile_infer  # 生成推理模型路径
+infer_img: ./train_data/rec/test  # 修改推理模型测试路径
+运行tools/export_model.py --config=configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml，生成推理模型
+
+5. 更新rec模型
+修改tools/infer/utility.py中，text recognizer参数
+parser.add_argument("--rec_model_dir", type=str)
+->
+parser.add_argument("--rec_model_dir", type=str, default='./output/v3_en_mobile_infer')
+
+6. 测试
+运行tools/infer_rec.py --config=configs/rec/PP-OCRv3/en_PP-OCRv3_rec.yml，显示测试结果
